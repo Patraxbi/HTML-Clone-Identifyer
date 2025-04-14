@@ -18,4 +18,4 @@ def compare_functionality(html_file1, html_file2):
     f1, f2 = extract_features(s1), extract_features(s2)
     total = sum(max(f1[k], f2[k]) for k in f1)
     diff = sum(abs(f1[k] - f2[k]) for k in f1)
-    return 100 - int((diff / total) * 100) if total > 0 else 100
+    return 100 - (diff / total) * 100 if total > 0 else 100

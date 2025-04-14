@@ -9,6 +9,7 @@ cssutils.log.setLevel(logging.CRITICAL)
 
 _css_cache = {}
 _style_cache = {}
+_header_cache = {}
 
 VISUAL_PROPERTIES = set()  # Will be populated dynamically
 
@@ -22,6 +23,19 @@ def fetch_css(href):
             return response.text
     except Exception:
         return ""
+
+def is_stylesheet_small_enough(url, max_kb=50):
+    if url in _header_cache:
+        return _header_cache[url]
+    try:
+        response = requests.head(url, timeout=5, allow_redirects=True)
+        length = response.headers.get('Content-Length')
+        is_small = length and int(length) <= max_kb * 1024
+        _header_cache[url] = is_small
+        return is_small
+    except Exception:
+        _header_cache[url] = False
+        return False
 
 def extract_used_classes_and_tags(soup):
     used = set()
@@ -105,9 +119,11 @@ def extract_styles(soup, base_path=None):
         href = link.get("href")
         if not href or len(href) < 5:
             continue
-        if href.startswith("http"):
+        if href.startswith("http") and is_stylesheet_small_enough(href, max_kb=50):
             css_text = fetch_css(href)
             stylesheet_rules.extend(extract_css_rules(css_text, used_selectors))
+#        elif href.startswith("http"):
+#           print(f"      -Skipped large stylesheet: {href}")
 
     return inline_styles, style_tag_rules, stylesheet_rules
 
@@ -121,7 +137,7 @@ def compare_style_blocks(rules1, rules2):
 
     if min(len(style_dicts1), len(style_dicts2)) == 0:
         return 0
-    
+
     matched_ratios = []
     for s1 in style_dicts1:
         best = 0
@@ -132,8 +148,8 @@ def compare_style_blocks(rules1, rules2):
             similarity = sum(1 for k in overlap if SequenceMatcher(None, s1[k], s2[k]).ratio() > 0.8) / len(overlap)
             best = max(best, similarity)
         matched_ratios.append(best)
-    
-    if matched_ratios :
+
+    if matched_ratios:
         average_similarity = sum(matched_ratios) / len(matched_ratios)
 
     return int(average_similarity * 100)
@@ -145,6 +161,8 @@ def compare_text_styles(html_file1, html_file2):
         soup1 = BeautifulSoup(f1, 'html.parser')
         soup2 = BeautifulSoup(f2, 'html.parser')
 
+    total_stylesheets = 0.0
+    good_stylesheets = 0.0
     all_css_texts = []
     for style in soup1.find_all("style"):
         if style.string:
@@ -156,50 +174,53 @@ def compare_text_styles(html_file1, html_file2):
         for link in soup.find_all("link", rel="stylesheet"):
             href = link.get("href")
             if href and href.startswith("http"):
-                css_text = fetch_css(href)
-                if css_text:
-                    all_css_texts.append(css_text)
+                total_stylesheets += 1
+                if is_stylesheet_small_enough(href, max_kb=50):
+                    good_stylesheets += 1
+                    css_text = fetch_css(href)
+                    if css_text:
+                        all_css_texts.append(css_text)
 
     VISUAL_PROPERTIES = extract_all_properties_from_css(all_css_texts)
 
     inline1, style1, sheet1 = extract_styles(soup1)
     inline2, style2, sheet2 = extract_styles(soup2)
 
+    print (good_stylesheets, total_stylesheets)
+    stylesheet_small_enough = good_stylesheets / total_stylesheets > 0.4 if total_stylesheets > 0 else False
 
     available = {
         "inline": len(inline1) > 0 or len(inline2) > 0,
         "style": len(style1) > 0 or len(style2) > 0,
-        "sheet": len(sheet1) > 0 or len(sheet2) > 0
+        "sheet": (len(sheet1) > 0 or len(sheet2) > 0) and stylesheet_small_enough
     }
 
     inline_score = compare_style_blocks(inline1, inline2) if available["inline"] else 0
     style_tag_score = compare_style_blocks(style1, style2) if available["style"] else 0
     stylesheet_score = compare_style_blocks(sheet1, sheet2) if available["sheet"] else 0
-    
+
     scores = {
-        "inline": inline_score ,
+        "inline": inline_score,
         "style": style_tag_score,
-        "sheet": stylesheet_score 
+        "sheet": stylesheet_score
     }
 
-    # Original weights
     base_weights = {
-        "inline": 0.33,
-        "style": 0.33,
-        "sheet": 0.34
+        "inline": 0.3,
+        "style": 0.6,
+        "sheet": 0.3
     }
 
-    # Total active weight
-    total_weight = sum(base_weights[k] for k in available if available[k])
+    if not available["inline"] and not available["style"] and not available["sheet"]:
+        return 100
 
-    # Redistribute weights
+    total_weight = sum(base_weights[k] for k in available if available[k])
     final_score = 0
     for k in scores:
         if available[k]:
             weight = base_weights[k] / total_weight
             final_score += scores[k] * weight
 
-
-    print(f"      -Inline Style Similarity: {scores["inline"]:.2f}, <style> Similarity: {scores["style"]:.2f}, Stylesheet Similarity: {scores["sheet"]:.2f}")
-    print(f"      -Avalability: <inline> {available["inline"]}, <style> {available["style"]}, Stylesheet {available["sheet"]}")
+    print(f"      -Inline Style Similarity: {scores['inline']:.2f}, <style> Similarity: {scores['style']:.2f}, Stylesheet Similarity: {scores['sheet']:.2f}")
+    print(f"      -Availability: <inline> {available['inline']}, <style> {available['style']}, Stylesheet {available['sheet']}")
     return final_score

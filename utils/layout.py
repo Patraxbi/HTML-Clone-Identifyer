@@ -21,4 +21,4 @@ def compare_layout(html_file1, html_file2):
 
     s1 = "\n".join(get_dom_tree_structure(soup1))
     s2 = "\n".join(get_dom_tree_structure(soup2))
-    return int(SequenceMatcher(None, s1, s2).ratio() * 100)
+    return SequenceMatcher(None, s1, s2).ratio() * 100

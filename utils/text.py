@@ -27,7 +27,7 @@ def compare_text(html_file1, html_file2):
     text1 = soup1.get_text(strip=True)
     text2 = soup2.get_text(strip=True)
 
-    text_similarity = int(SequenceMatcher(None, text1, text2).ratio() * 100)
+    text_similarity = SequenceMatcher(None, text1, text2).ratio() * 100
 #    if text_similarity < 10:
  #       text_similarity_translation = compare_with_translation(text1, text2)
   #      if text_similarity_translation > text_similarity:

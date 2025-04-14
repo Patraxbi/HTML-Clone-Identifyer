@@ -4,10 +4,10 @@ from utils.layout import compare_layout
 from utils.functionality import compare_functionality
 from utils.styles import compare_text_styles
 
-coef_functionality = 0.3 
+coef_functionality = 0.4
 coef_layout = 0.2
-coef_css = 0.5
-coef_text = 0.0
+coef_css = 0.4
+#coef_text = 0.0
 
 base_path = os.path.join(os.getcwd(), 'clones')
 tire_dirs = ['tier1', 'tier2', 'tier3', 'tier4']
@@ -29,12 +29,13 @@ for tire in tire_dirs:
             rep = group[0]
             rep_path = os.path.join(base_path, tire, rep)
 
-            text_similarity = compare_text(full_path, rep_path)
+            text_similarity = -1
+            #text_similarity = compare_text(full_path, rep_path)
             layout_similarity = compare_layout(full_path, rep_path)
             functionality_similarity = compare_functionality(full_path, rep_path)
             css_similarity = compare_text_styles(full_path, rep_path)
             total = sum([
-                coef_text * text_similarity,
+                #coef_text * text_similarity,
                 coef_layout * layout_similarity,
                 coef_functionality * functionality_similarity,
                 coef_css * css_similarity
