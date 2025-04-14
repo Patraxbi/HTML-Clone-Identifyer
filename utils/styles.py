@@ -8,6 +8,7 @@ import logging
 cssutils.log.setLevel(logging.CRITICAL)
 
 _css_cache = {}
+_style_cache = {}
 
 VISUAL_PROPERTIES = set()  # Will be populated dynamically
 
@@ -45,6 +46,10 @@ def extract_all_properties_from_css(css_texts):
     return found_properties
 
 def extract_css_rules(css_text, used_selectors):
+    key = (css_text, tuple(sorted(used_selectors)))
+    if key in _style_cache:
+        return _style_cache[key]
+
     matched_rules = []
     try:
         stylesheet = cssutils.parseString(css_text)
@@ -65,6 +70,8 @@ def extract_css_rules(css_text, used_selectors):
                 matched_rules.append((rule.selectorText, props))
     except Exception:
         pass
+
+    _style_cache[key] = matched_rules
     return matched_rules
 
 def extract_styles(soup, base_path=None):
@@ -112,6 +119,9 @@ def compare_style_blocks(rules1, rules2):
     if total == 0:
         return 100
 
+    if min(len(style_dicts1), len(style_dicts2)) == 0:
+        return 0
+    
     matched_ratios = []
     for s1 in style_dicts1:
         best = 0
@@ -119,11 +129,13 @@ def compare_style_blocks(rules1, rules2):
             overlap = set(s1.keys()) & set(s2.keys())
             if not overlap:
                 continue
-            similarity = sum(1 for k in overlap if s1[k] == s2[k]) / len(overlap)
+            similarity = sum(1 for k in overlap if SequenceMatcher(None, s1[k], s2[k]).ratio() > 0.8) / len(overlap)
             best = max(best, similarity)
         matched_ratios.append(best)
+    
+    if matched_ratios :
+        average_similarity = sum(matched_ratios) / len(matched_ratios)
 
-    average_similarity = sum(matched_ratios) / len(matched_ratios)
     return int(average_similarity * 100)
 
 def compare_text_styles(html_file1, html_file2):
@@ -153,11 +165,41 @@ def compare_text_styles(html_file1, html_file2):
     inline1, style1, sheet1 = extract_styles(soup1)
     inline2, style2, sheet2 = extract_styles(soup2)
 
-    inline_score = compare_style_blocks(inline1, inline2)
-    style_tag_score = compare_style_blocks(style1, style2)
-    stylesheet_score = compare_style_blocks(sheet1, sheet2)
 
-    print(f"      -Inline Style Similarity: {inline_score:.2f}, <style> Similarity: {style_tag_score:.2f}, Stylesheet Similarity: {stylesheet_score:.2f}")
+    available = {
+        "inline": len(inline1) > 0 or len(inline2) > 0,
+        "style": len(style1) > 0 or len(style2) > 0,
+        "sheet": len(sheet1) > 0 or len(sheet2) > 0
+    }
 
-    final_score = int(0.4 * inline_score + 0.3 * style_tag_score + 0.6 * stylesheet_score)
+    inline_score = compare_style_blocks(inline1, inline2) if available["inline"] else 0
+    style_tag_score = compare_style_blocks(style1, style2) if available["style"] else 0
+    stylesheet_score = compare_style_blocks(sheet1, sheet2) if available["sheet"] else 0
+    
+    scores = {
+        "inline": inline_score ,
+        "style": style_tag_score,
+        "sheet": stylesheet_score 
+    }
+
+    # Original weights
+    base_weights = {
+        "inline": 0.33,
+        "style": 0.33,
+        "sheet": 0.34
+    }
+
+    # Total active weight
+    total_weight = sum(base_weights[k] for k in available if available[k])
+
+    # Redistribute weights
+    final_score = 0
+    for k in scores:
+        if available[k]:
+            weight = base_weights[k] / total_weight
+            final_score += scores[k] * weight
+
+
+    print(f"      -Inline Style Similarity: {scores["inline"]:.2f}, <style> Similarity: {scores["style"]:.2f}, Stylesheet Similarity: {scores["sheet"]:.2f}")
+    print(f"      -Avalability: <inline> {available["inline"]}, <style> {available["style"]}, Stylesheet {available["sheet"]}")
     return final_score

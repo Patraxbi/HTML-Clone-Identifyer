@@ -4,8 +4,10 @@ from utils.layout import compare_layout
 from utils.functionality import compare_functionality
 from utils.styles import compare_text_styles
 
-coef_functionality = coef_layout = coef_css = 0.3
-coef_text = 0.1
+coef_functionality = 0.3 
+coef_layout = 0.2
+coef_css = 0.5
+coef_text = 0.0
 
 base_path = os.path.join(os.getcwd(), 'clones')
 tire_dirs = ['tier1', 'tier2', 'tier3', 'tier4']
