@@ -22,19 +22,22 @@ for tire in tire_dirs:
         to_add = False
         best_group = None
         biggest = 0;
- #       print(f"Processing file: {file} in {tire}, number of groups: {len(tire_groups[tire])}")
+        print(f"Processing file: {file} in {tire}, number of groups: {len(tire_groups[tire])}")
         for group in tire_groups[tire]:
             rep = group[0]
             rep_path = os.path.join(base_path, tire, rep)
 
+            text_similarity = compare_text(full_path, rep_path)
+            layout_similarity = compare_layout(full_path, rep_path)
+            functionality_similarity = compare_functionality(full_path, rep_path)
+            css_similarity = compare_text_styles(full_path, rep_path)
             total = sum([
-                coef_text * compare_text(full_path, rep_path),
-                coef_layout * compare_layout(full_path, rep_path),
-                coef_functionality * compare_functionality(full_path, rep_path),
-                coef_css * compare_text_styles(full_path, rep_path)
+                coef_text * text_similarity,
+                coef_layout * layout_similarity,
+                coef_functionality * functionality_similarity,
+                coef_css * css_similarity
             ])
-
-#            print(f"Comparing with {rep}: {total:.2f}% similarity")
+            print(f"Comparing with {rep}: {total:.2f}% similarity, {text_similarity:.2f}% text, {layout_similarity:.2f}% layout, {functionality_similarity:.2f}% functionality, {css_similarity:.2f}% css")
             # sure the same file
             if total >= 90:
                 group.append(file)
@@ -52,8 +55,8 @@ for tire in tire_dirs:
             best_group.append(file)
         elif not added:
             tire_groups[tire].append([file])
-#            print(f"Creating new group with {file}")
- #       print()
+            print(f"Creating new group with {file}")
+        print()
 
 with open("groups.txt", 'w', encoding='utf-8') as f:
     for tire, groups in tire_groups.items():

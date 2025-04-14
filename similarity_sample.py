@@ -7,13 +7,13 @@ from utils.functionality import compare_functionality
 from utils.styles import compare_text_styles
 
 
-coef_text = 0.1
-coef_layout = 0.3
+coef_text = 0.0
+coef_layout = 0.2
 coef_functionality = 0.3
-coef_css = 0.3
+coef_css = 0.5
 
-html_file1 = 'clones/tier2/fortunatextiles.es.html'  # Replace with your first HTML file path
-html_file2 = 'clones/tier2/tiptopteak.com.html'  # Replace with your second HTML file path
+html_file1 = 'clones/tier2/tiptopteak.com.html'  # Replace with your first HTML file path
+html_file2 = 'clones/tier2/fortunatextiles.es.html'  # Replace with your second HTML file path
 
 
 # in both ways because SequenceMatcher is not symmetric
