@@ -4,17 +4,12 @@ from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 import cssutils
 import logging
+
 cssutils.log.setLevel(logging.CRITICAL)
+
 _css_cache = {}
 
-VISUAL_PROPERTIES = {
-    "color", "background", "background-color", "font-size", "font-family",
-    "font-weight", "font-style", "text-align", "text-decoration",
-    "line-height", "letter-spacing", "word-spacing", "opacity",
-    "visibility", "display", "position", "z-index", "border", "margin",
-    "padding", "box-shadow", "text-shadow", "overflow", "white-space",
-    "text-transform", "animation", "transition"
-}
+VISUAL_PROPERTIES = set()  # Will be populated dynamically
 
 def fetch_css(href):
     if href in _css_cache:
@@ -35,6 +30,19 @@ def extract_used_classes_and_tags(soup):
         for cls in classes:
             used.add(f".{cls}")
     return used
+
+def extract_all_properties_from_css(css_texts):
+    found_properties = set()
+    for css_text in css_texts:
+        try:
+            stylesheet = cssutils.parseString(css_text)
+            for rule in stylesheet:
+                if rule.type == rule.STYLE_RULE:
+                    for prop in rule.style:
+                        found_properties.add(prop.name.lower())
+        except Exception:
+            continue
+    return found_properties
 
 def extract_css_rules(css_text, used_selectors):
     matched_rules = []
@@ -76,7 +84,7 @@ def extract_styles(soup, base_path=None):
                 key, value = part.split(':', 1)
                 key = key.strip().lower()
                 value = value.strip().lower()
-                if key in VISUAL_PROPERTIES:
+                if key in VISUAL_PROPERTIES and "var(" not in value and "calc(" not in value:
                     style_dict[key] = value
         if style_dict:
             inline_styles.append(style_dict)
@@ -97,30 +105,59 @@ def extract_styles(soup, base_path=None):
     return inline_styles, style_tag_rules, stylesheet_rules
 
 def compare_style_blocks(rules1, rules2):
-    total = max(len(rules1), len(rules2))
-    matches = 0
-    for r1, r2 in zip(rules1, rules2):
-        overlap = set(r1.keys()) & set(r2.keys())
-        if not overlap:
-            continue
-        similarity = sum(1 for k in overlap if r1[k] == r2[k]) / len(overlap)
-        if similarity >= 0.8:
-            matches += 1
-    return (matches / total) * 100 if total > 0 else 100
+    style_dicts1 = [r for _, r in rules1] if rules1 and isinstance(rules1[0], tuple) else rules1
+    style_dicts2 = [r for _, r in rules2] if rules2 and isinstance(rules2[0], tuple) else rules2
+
+    total = max(len(style_dicts1), len(style_dicts2))
+    if total == 0:
+        return 100
+
+    matched_ratios = []
+    for s1 in style_dicts1:
+        best = 0
+        for s2 in style_dicts2:
+            overlap = set(s1.keys()) & set(s2.keys())
+            if not overlap:
+                continue
+            similarity = sum(1 for k in overlap if s1[k] == s2[k]) / len(overlap)
+            best = max(best, similarity)
+        matched_ratios.append(best)
+
+    average_similarity = sum(matched_ratios) / len(matched_ratios)
+    return int(average_similarity * 100)
 
 def compare_text_styles(html_file1, html_file2):
+    global VISUAL_PROPERTIES
+
     with open(html_file1, 'r', encoding='utf-8') as f1, open(html_file2, 'r', encoding='utf-8') as f2:
         soup1 = BeautifulSoup(f1, 'html.parser')
         soup2 = BeautifulSoup(f2, 'html.parser')
+
+    all_css_texts = []
+    for style in soup1.find_all("style"):
+        if style.string:
+            all_css_texts.append(style.string)
+    for style in soup2.find_all("style"):
+        if style.string:
+            all_css_texts.append(style.string)
+    for soup in [soup1, soup2]:
+        for link in soup.find_all("link", rel="stylesheet"):
+            href = link.get("href")
+            if href and href.startswith("http"):
+                css_text = fetch_css(href)
+                if css_text:
+                    all_css_texts.append(css_text)
+
+    VISUAL_PROPERTIES = extract_all_properties_from_css(all_css_texts)
 
     inline1, style1, sheet1 = extract_styles(soup1)
     inline2, style2, sheet2 = extract_styles(soup2)
 
     inline_score = compare_style_blocks(inline1, inline2)
-    style_tag_score = compare_style_blocks([r for _, r in style1], [r for _, r in style2])
-    stylesheet_score = compare_style_blocks([r for _, r in sheet1], [r for _, r in sheet2])
+    style_tag_score = compare_style_blocks(style1, style2)
+    stylesheet_score = compare_style_blocks(sheet1, sheet2)
 
     print(f"      -Inline Style Similarity: {inline_score:.2f}, <style> Similarity: {style_tag_score:.2f}, Stylesheet Similarity: {stylesheet_score:.2f}")
 
-    final_score = int(0.4 * inline_score + 0.3 * style_tag_score + 0.3 * stylesheet_score)
+    final_score = int(0.4 * inline_score + 0.3 * style_tag_score + 0.6 * stylesheet_score)
     return final_score
